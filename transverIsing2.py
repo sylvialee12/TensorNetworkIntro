@@ -16,6 +16,7 @@ def functimer(func):
         return num
     return wrapper
 
+
 def transverIsing():
     """
 	Main function to run transver Ising model with the iTEBD algorithm for transverse Ising model
@@ -24,15 +25,16 @@ def transverIsing():
     # -----------------parameter setting----------------------
     J,g=1,5
     epislon=0.005 # delta beta
-    chi,d=3,2
+    chi,d=100,2
     G = np.random.rand(2,d,chi,chi) # G[A,:,:,:] and G[B,:,:,:]
     l = np.random.rand(2,chi) # l[A,:] and G[B,:]
     H=np.array([[J,-g/2,-g/2,0],[-g/2,-J,0,-g/2],[-g/2,0,-J,-g/2],[0,-g/2,-g/2,J]])
     t_series=np.linspace(1,4,50)
     f = lambda k,g : -2*np.sqrt(1+g**2-2*g*np.cos(k))/np.pi/2.
     E0_exact = quad(f, 0, np.pi, args=(g,))[0]
-    energyVsT(t_series,H,epislon,G,l,E0_exact)
-    theta=evolve(H,2,epislon,G,l)
+    # energyVsT(t_series,H,epislon,G,l,E0_exact)
+    theta,G,l=evolve(H,2,epislon,G,l)
+    spectrum(l)
     print("E_iTEBD =", -np.log(np.sum(theta**2))/epislon/2)
     print("E_exact =", E0_exact)
 
@@ -61,18 +63,26 @@ def evolve(H,t_fin,epislon,G,l):
         G[A,:,:,:]=np.transpose(np.tensordot(np.diag(l[B,:]**(-1)),X,axes=(1,1)),(1,0,2))
         Z=np.transpose(np.reshape(Z[0:d*chi,0:chi],(d,chi,chi)),(0,2,1))
         G[B,:,:,:]=np.tensordot(Z,np.diag(l[B,:]**(-1)),axes=(2,0))
-    return theta
+    return theta,G,l
 
 def energyVsT(t_series,H,epislon,G,l,E0_exact):
     erro=np.zeros(len(t_series))
     for (i,t) in enumerate(t_series):
-        theta=evolve(H,t,epislon,G,l)
+        theta,G,l=evolve(H,t,epislon,G,l)
         erro[i]=abs(-np.log(np.sum(theta**2))/epislon/2-E0_exact)/abs(E0_exact)
     plt.figure()
     plt.plot(t_series,erro)
     plt.yscale("log")
     plt.show()
 
+
+def spectrum(l):
+    plt.figure("Spectrum")
+    plt.plot(l[0,:]**2)
+    plt.plot(l[1,:]**2)
+    plt.yscale("log")
+    plt.xscale("log")
+    plt.show()
 
 
 
