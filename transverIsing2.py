@@ -8,6 +8,11 @@ import matplotlib.pyplot as plt
 
 
 
+sz = np.array([[1, 0], [0, -1]])
+sx = np.array([[0, 1], [1, 0]])
+sy=np.array([[0,-1j],[1j,0]])
+
+
 def functimer(func):
     def wrapper(*args,**kwargs):
         now=time()
@@ -23,20 +28,30 @@ def transverIsing():
 	Hamiltonian is: H= -J sum_i sigma_z,i sigma_z,i+1, G for Gamma, l for lambda
 	"""
     # -----------------parameter setting----------------------
-    J,g=1,5
+    J,g=-1,1
     epislon=0.005 # delta beta
-    chi,d=100,2
+    chi,d=10,2
+    t_fin=5
     G = np.random.rand(2,d,chi,chi) # G[A,:,:,:] and G[B,:,:,:]
     l = np.random.rand(2,chi) # l[A,:] and G[B,:]
     H=np.array([[J,-g/2,-g/2,0],[-g/2,-J,0,-g/2],[-g/2,0,-J,-g/2],[0,-g/2,-g/2,J]])
     t_series=np.linspace(1,4,50)
-    f = lambda k,g : -2*np.sqrt(1+g**2-2*g*np.cos(k))/np.pi/2.
-    E0_exact = quad(f, 0, np.pi, args=(g,))[0]
+    g_series=np.linspace(0,5,50)
+    mx,my,mz=magVsg(g_series,J,t_fin,epislon,G,l)
+    plotmag(mx,my,mz,g_series)
+    # f = lambda k,g : -2*np.sqrt(1+g**2-2*g*np.cos(k))/np.pi/2.
+    # E0_exact = quad(f, 0, np.pi, args=(g,))[0]
     # energyVsT(t_series,H,epislon,G,l,E0_exact)
-    theta,G,l=evolve(H,2,epislon,G,l)
-    spectrum(l)
-    print("E_iTEBD =", -np.log(np.sum(theta**2))/epislon/2)
-    print("E_exact =", E0_exact)
+    # theta,G,l=evolve(H,5,epislon,G,l)
+    # mz=site_expecation_value(G,l,sz)
+    # mx=site_expecation_value(G,l,sx)
+    # energy=bond_expectation_value(G,l,H)
+    # print("E_iTEBD =", -np.log(np.sum(theta**2))/epislon/2)
+    # print("E_exact =", E0_exact)
+    # print(mz)
+    # print(mx)
+    # print(energy)
+
 
 
 def evolve(H,t_fin,epislon,G,l):
@@ -64,6 +79,7 @@ def evolve(H,t_fin,epislon,G,l):
         Z=np.transpose(np.reshape(Z[0:d*chi,0:chi],(d,chi,chi)),(0,2,1))
         G[B,:,:,:]=np.tensordot(Z,np.diag(l[B,:]**(-1)),axes=(2,0))
     return theta,G,l
+    
 
 def energyVsT(t_series,H,epislon,G,l,E0_exact):
     erro=np.zeros(len(t_series))
@@ -73,6 +89,29 @@ def energyVsT(t_series,H,epislon,G,l,E0_exact):
     plt.figure()
     plt.plot(t_series,erro)
     plt.yscale("log")
+    plt.show()
+
+
+def magVsg(g_series,J,t_fin,epislon,G,l):
+    mx,my,mz=np.zeros([2,len(g_series)]),np.zeros([2,len(g_series)]),np.zeros([2,len(g_series)])
+    for (i,g) in enumerate(g_series):
+        H = np.array([[J, -g / 2, -g / 2, 0], [-g / 2, -J, 0, -g / 2], [-g / 2, 0, -J, -g / 2], [0, -g / 2, -g / 2, J]])
+        theta,G,l=evolve(H,t_fin,epislon,G,l)
+        mx[:,i]=site_expecation_value(G,l,sx)
+        # my[:,i]=site_expecation_value(G,l,sy)
+        mz[:,i]=site_expecation_value(G,l,sz)
+    return mx,my,mz
+
+
+def plotmag(mx,my,mz,g):
+    plt.figure("Magnetization")
+    plt.subplot(1,3,1)
+    plt.plot(g,mx[0,:])
+    plt.subplot(1,3,2)
+    plt.plot(g,my[0,:])
+    plt.subplot(1,3,3)
+    plt.plot(g,mz[0,:])
+    plt.tight_layout()
     plt.show()
 
 
@@ -130,6 +169,50 @@ def normal(A):
     erg=A/np.sqrt(e)
     return [erg,v]
 
+def entanglement_entropy(l):
+    S=np.zeros(2)
+    for i_bond in range(2):
+        x=l[i_bond,:]**2
+        S[i_bond]=np.dot(-np.log(x),x)
+    return S
+
+def site_expecation_value(G,l,O):
+    E=np.zeros(2)
+    for isite in range(0,2):
+        A=isite%2
+        B=(isite+1)%2
+        theta=np.tensordot(np.diag(l[B,:]),G[A,:,:,:],axes=(1,1))
+        theta=np.tensordot(theta,np.diag(l[A,:]),axes=(2,0))
+        theta_o=np.tensordot(theta,O,axes=(1,0)).conj()
+        E[isite]=np.squeeze(np.tensordot(theta_o,theta,axes=([0,1,2],[0,2,1]))).item()
+    return E
+
+
+def bond_expectation_value(G,l,U):
+    E=np.zeros(2)
+    for isite in range(2):
+        A=isite%2
+        B=(isite+1)%2
+        theta = np.tensordot(np.diag(l[B, :]), G[A, :, :, :], axes=(1, 1))
+        theta = np.tensordot(theta, np.diag(l[A, :]), axes=(2, 0))
+        theta = np.tensordot(theta,G[B,:,:,:],axes=(2,1))
+        theta = np.tensordot(theta,np.diag(l[B,:]),axes=(3,0))
+        theta_o = np.tensordot(theta, np.reshape(U,[2,2,2,2]), axes=([1,2],[0,1])).conj()
+        E[isite] = np.squeeze(np.tensordot(theta_o, theta, axes=([0, 2,3,1], [0, 1,2,3]))).item()
+    return E
+
+
+def correlation(G,l,n,O):
+    corr=np.zeors(2)
+    for isite in range(0,2):
+        for i in range(n):
+            theta=np.tensordot(np.diag(l[(isite+i+1)%2,:]),G[(isite+i)%2,:,:,:],axes=(1,1))
+            theta=np.tensordot(theta,np.diag(l[(isite+i)%2,:]),axes=(2,0))
+        theta_o=np.tensordot(theta,O,axes=(1,0))
+        theta_o=np.tensordot(theta_o,O,axes=(-2,0)).conj()
+        oder_o=[0]+list(range(2,n+1))+[n+2]+[1,n+1]
+        corr[isite]=np.squeeze(np.tensordot(theta_o,theta,axes=(list(range(n+3)),oder_o))).item()
+    return corr
 
 transverIsing()
 
