@@ -21,14 +21,14 @@ def functimer(func):
         return num
     return wrapper
 
-
+@functimer
 def transverIsing():
     """
 	Main function to run transver Ising model with the iTEBD algorithm for transverse Ising model
 	Hamiltonian is: H= -J sum_i sigma_z,i sigma_z,i+1, G for Gamma, l for lambda
 	"""
     # -----------------parameter setting----------------------
-    J,g=-1,1
+    J,g=1,1
     epislon=0.005 # delta beta
     chi,d=10,2
     t_fin=5
@@ -37,20 +37,20 @@ def transverIsing():
     H=np.array([[J,-g/2,-g/2,0],[-g/2,-J,0,-g/2],[-g/2,0,-J,-g/2],[0,-g/2,-g/2,J]])
     t_series=np.linspace(1,4,50)
     g_series=np.linspace(0,5,50)
-    mx,my,mz=magVsg(g_series,J,t_fin,epislon,G,l)
-    plotmag(mx,my,mz,g_series)
-    # f = lambda k,g : -2*np.sqrt(1+g**2-2*g*np.cos(k))/np.pi/2.
-    # E0_exact = quad(f, 0, np.pi, args=(g,))[0]
-    # energyVsT(t_series,H,epislon,G,l,E0_exact)
-    # theta,G,l=evolve(H,5,epislon,G,l)
-    # mz=site_expecation_value(G,l,sz)
-    # mx=site_expecation_value(G,l,sx)
-    # energy=bond_expectation_value(G,l,H)
-    # print("E_iTEBD =", -np.log(np.sum(theta**2))/epislon/2)
-    # print("E_exact =", E0_exact)
-    # print(mz)
-    # print(mx)
-    # print(energy)
+    # mx,my,mz=magVsg(g_series,J,t_fin,epislon,G,l)
+    # plotmag(mx,my,mz,g_series)
+    f = lambda k,g : -2*np.sqrt(1+g**2-2*g*np.cos(k))/np.pi/2.
+    E0_exact = quad(f, 0, np.pi, args=(g,))[0]
+    energyVsT(t_series,H,epislon,G,l,E0_exact)
+    theta,G,l = evolve(H,5,epislon,G,l)
+    mz = site_expecation_value(G,l,sz)
+    mx = site_expecation_value(G,l,sx)
+    energy = bond_expectation_value(G,l,H)
+    print("E_iTEBD =", -np.log(np.sum(theta**2))/epislon/2)
+    print("E_exact =", E0_exact)
+    print(mz)
+    print(mx)
+    print(energy)
 
 
 
@@ -214,9 +214,33 @@ def correlation(G,l,n,O):
         corr[isite]=np.squeeze(np.tensordot(theta_o,theta,axes=(list(range(n+3)),oder_o))).item()
     return corr
 
-transverIsing()
+
+def Heisenberg():
+
+    sp = np.array([[0,1],[0,0]])
+    sm = np.array([[0,0],[1,0]])
+    sz = np.array([[1,0],[0,-1]])/2
+    s0 = np.eye(2)
+    hz, Jxx, Jz = 0, 1, 1
+    epislon=0.005 # delta beta
+    chi,d=10,2
+
+    H = Jxx/2*(np.kron(sp,sm)+np.kron(sm,sp))+Jz*(np.kron(sz,sz))+\
+        hz*(np.kron(sz,s0))+hz*(np.kron(s0,sz))
+
+    G = np.random.rand(2,d,chi,chi) # G[A,:,:,:] and G[B,:,:,:]
+    l = np.random.rand(2,chi) # l[A,:] and G[B,:]
+
+    theta,G,l = evolve(H,20,epislon,G,l)
+    mz = site_expecation_value(G,l,sz)
+    mx = site_expecation_value(G,l,sx)
+    energy = bond_expectation_value(G,l,H)
+    print("E_iTEBD =", -np.log(np.sum(theta**2))/epislon/2)
+
+    print(energy)
 
 
+Heisenberg()
 
 
 
