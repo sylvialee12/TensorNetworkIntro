@@ -7,8 +7,16 @@ import numpy.random as random
 import scipy.sparse.linalg as ssl
 import numpy.linalg as nl
 import matplotlib.pyplot as plt
+from time import time
 
 
+def functimer(func):
+    def wrapper(*args,**kwargs):
+        now=time()
+        num=func(*args,**kwargs)
+        print("Running %s : %f s"%(func.__name__,time()-now))
+        return num
+    return wrapper
 
 class DMRG():
     """
@@ -57,7 +65,7 @@ class DMRG():
         B,U=nl.qr(np.transpose(np.conj(b)))
         B=np.transpose(np.conj(B))
         d1,d2=B.shape
-        T=np.transpose(B.reshape((d1*d2)/(d*D2),d,D2),[1,0,2])
+        T=np.transpose(B.reshape((d1*d2)//(d*D2),d,D2),[1,0,2])
         return T,np.transpose(np.conj(U))
 
 
@@ -70,7 +78,7 @@ class DMRG():
         T2=np.reshape(T,[D1*d,D2])
         A,U=nl.qr(T2)
         d1,d2=A.shape
-        T=np.reshape(A,[d,D1,d1*d2/(D1*d)])
+        T=np.reshape(A,[d,D1,d1*d2//(D1*d)])
         return T,U
 
 
@@ -114,7 +122,7 @@ class DMRG():
         d0,d1,d2,d3=H.shape
         H=np.reshape(H,[d0*d1,d2*d3])
         w,v=ssl.eigsh(H,which='SA',k=1,maxiter=5000)
-        v=np.reshape(v,[self.d,1,d0*d1/self.d])
+        v=np.reshape(v,[self.d,1,d0*d1//self.d])
         l,u=self.left_cannonical(v)
         M[0]=l
         L=[[] for i in range(len(R))]
@@ -147,7 +155,7 @@ class DMRG():
         d0,d1,d2,d3=H.shape
         H = np.reshape(H, [d0*d1, d2 * d3])
         w, v = ssl.eigsh(H, which='SA', k=1,maxiter=5000)
-        v=np.reshape(v,[self.d,d0*d1/self.d,1])
+        v=np.reshape(v,[self.d,d0*d1//self.d,1])
         v,u=self.right_canonical(v)
         M[-1] = v
         R=[[] for i in range(len(L))]
@@ -234,12 +242,12 @@ class DMRG():
         plt.tight_layout()
         plt.show()
 
-
+    @functimer
     def dmrg(self):
-        M00=self.initialize()
-        R,M=self.right_operator(M00)
-        L, M0=self.right_sweep(R,M)
-        R,M1=self.left_sweep(L,M0)
+        M00 = self.initialize()
+        R,M = self.right_operator(M00)
+        L,M0 = self.right_sweep(R,M)
+        R,M1 = self.left_sweep(L,M0)
         n=0
         s=0
         for (m, m1) in zip(M, M1):
@@ -256,31 +264,31 @@ class DMRG():
 
 
 if __name__=="__main__":
-    N=100
-    h,J,Jz=1,0.3,-2
-    sz=np.array([[1,0],[0,-1]])
-    sp=np.array([[0,1],[0,0]])
-    sm=np.array([[0,0],[1,0]])
+    N = 100
+    h,J,Jz = 0,1,1
+    sz = np.array([[1,0],[0,-1]])/2
+    sp = np.array([[0,1],[0,0]])
+    sm = np.array([[0,0],[1,0]])
     MPO=[[] for i in range(N)]
-    MPO[1]=np.zeros([2,2,5,5])
-    MPO[1][:,:,0,0]=np.eye(2)
-    MPO[1][:,:,1,0]=sp
-    MPO[1][:,:,2,0]=sm
-    MPO[1][:,:,3,0]=sz
-    MPO[1][:,:,4,0]=-h*sz
-    MPO[1][:,:,4,1]=J/2*sm
-    MPO[1][:,:,4,2]=J/2*sp
-    MPO[1][:,:,4,3]=Jz*sz
-    MPO[1][:,:,4,4]=np.eye(2)
+    MPO[1] = np.zeros([2,2,5,5])
+    MPO[1][:,:,0,0] = np.eye(2)
+    MPO[1][:,:,1,0] = sp
+    MPO[1][:,:,2,0] = sm
+    MPO[1][:,:,3,0] = sz
+    MPO[1][:,:,4,0] = -h*(sm+sp)
+    MPO[1][:,:,4,1] = J/2*sm
+    MPO[1][:,:,4,2] = J/2*sp
+    MPO[1][:,:,4,3] = Jz*sz
+    MPO[1][:,:,4,4] = np.eye(2)
     MPO[0]=MPO[1][:,:,4,:].reshape(2,2,1,5)
     MPO[N-1]=MPO[1][:,:,:,0].reshape(2,2,5,1)
     for i in range(2,N-1):
         MPO[i]=MPO[1]
 
-    a=DMRG(10**(-6),MPO,N,5)
+    a=DMRG(10**(-7),MPO,N,20)
     M,R=a.dmrg()
-    energy=a.energy(R[1],M[0])
-    mz=a.site_expecation_value(M,sz,99)
+    energy=a.energy(R[1],M[0])/N
+    mz=a.site_expecation_value(M,sz,5)
     a.magnetization(M)
     print(np.real(energy))
     print(mz)
