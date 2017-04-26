@@ -74,11 +74,11 @@ class DMRG():
         :param T: a tensor representing specific site
         :return: Left-canonical tensor
         """
-        d,D1,D2=np.shape(T)
-        T2=np.reshape(T,[D1*d,D2])
-        A,U=nl.qr(T2)
-        d1,d2=A.shape
-        T=np.reshape(A,[d,D1,d1*d2//(D1*d)])
+        d,D1,D2 = np.shape(T)
+        T2 = np.reshape(T,[D1*d,D2])
+        A,U = nl.qr(T2)
+        d1,d2 = A.shape
+        T = np.reshape(A,[d,D1,d1*d2//(D1*d)])
         return T,U
 
 
@@ -106,8 +106,6 @@ class DMRG():
             Ri = np.tensordot(np.conj(B[-(i+1)]),Ri,axes=([0,2],[0,3]))
             R[-(i+1)] = np.transpose(Ri,[2,1,0])
         return R,B
-
-
 
 
     def right_sweep(self,R,M):
@@ -146,6 +144,7 @@ class DMRG():
         M[-1]=np.tensordot(u,M[-1],axes=(1,1))
         return L,M
 
+
     def left_sweep(self,L,M):
         H = np.tensordot(L[-2], self.MPO[-1], axes=(4, 2))
         H = np.squeeze(H)
@@ -177,20 +176,29 @@ class DMRG():
         M[0]=np.tensordot(M[0],u,axes=(2,0))
         return R,M
 
-    def site_expecation_value(self, M, O,i):
+    def shift_observable(self,M):
+        """
+        Shift the obaservale site
+        """
+        u = np.array([[1]])
+        for i in range(0,minsite):
+            M[i] = np.tensordot(u, M[i],axes=(-1,1)).transpose(1,0,2)
+            l,u = self.left_cannonical(M[i])
+            M[i] = l
 
-        if i==0:
-            e0=np.tensordot(M[0],O,axes=(0,0))
-            e=np.tensordot(e0,np.conj(M[0]),axes=([0,1,2],[1,2,0]))
+    def site_expecation_value(self, M, Operator,i):
+
+        if i == 0:
+            e0 = np.tensordot(M[0],Operator,axes=(0,0))
+            e = np.tensordot(e0,np.conj(M[0]),axes=([0,1,2],[1,2,0]))
         else:
-            ei=np.tensordot(M[i],O,axes=(0,0))
-            ei=np.tensordot(ei,np.conj(M[i]),axes=([2,1],[0,2]))
-            m0=np.tensordot(M[0],np.conj(M[0]),axes=([0,1],[0,1]))
+            ei = np.tensordot(M[i],Operator,axes=(0,0))
+            ei = np.tensordot(ei,np.conj(M[i]),axes=([2,1],[0,2]))
+            m0 = np.tensordot(M[0],np.conj(M[0]),axes=([0,1],[0,1]))
             for j in range(1,i):
-                mi=np.tensordot(M[j],np.conj(M[j]),axes=(0,0))
-                m0=np.tensordot(m0,mi,axes=([0,1],[0,2]))
+                mi = np.tensordot(m0,M[j],axes=(0,1))
+                m0 = np.tensordot(mi,np.conj(M[j]),axes=([0,1],[1,0]))
             e=np.tensordot(m0,ei,axes=([0,1],[0,1]))
-
         norm=np.tensordot(M[0],np.conj(M[0]),axes=([0,1,2],[0,1,2]))
 
         return np.real(e/norm)
@@ -230,8 +238,6 @@ class DMRG():
         for i in range(minsite+1,maxsite):
             MI = np.tensordot(MPI, M[i],axes=(2,1))
             MPI = np.tensordot(MI, np.conj(M[i]), axes=([3,2],[0,1]))
-            # MI = np.tensordot(M[i], np.conj(M[i]), axes=(0,0)).transpose(0,2,1,3)
-            # MPI = np.tensordot(MPI, MI,axes=([2,3],[0,1]))
 
         MP = np.tensordot(M[maxsite],operator,axes=(0,0))
         MPJ = np.tensordot(MP, np.conj(M[maxsite]),axes=(-1,0))
@@ -243,7 +249,7 @@ class DMRG():
         return correlation
 
 
-
+    @functimer
     def magnetization(self,M):
         sz = np.array([[1, 0], [0, -1]])
         sx = np.array([[0, 1], [1, 0]])
@@ -259,8 +265,7 @@ class DMRG():
         return np.mean(np.abs(mx)),np.mean(my),np.mean(np.abs(mz))
 
 
-
-    def meanmagnetization(self):
+    def spin_correlation(self,M):
         pass
 
 
@@ -309,7 +314,7 @@ def mpo(N,h,J,Jz):
 
 
 if __name__=="__main__":
-    N = [10,20,30]
+    N = [200]
     J,Jz = 0,-1
     H = np.linspace(0,1,20)
     mx = np.zeros(20)
@@ -325,7 +330,8 @@ if __name__=="__main__":
             mx[idx], my[idx] ,mz[idx] = a.magnetization(M)
 
         plt.figure("Magnetization")
-        plt.plot(H,mz)
+        plt.plot(H,mz,'o-',label="n=%s"%(str(n)))
+    plt.legend(loc='upper right', shadow=True)
     plt.show()
 
 
