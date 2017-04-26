@@ -20,7 +20,7 @@ def functimer(func):
 
 class DMRG():
     """
-    The DMRG variational algorithm to find the ground state of MPO
+    The DMRG variational algorithm to find the ground state of an MPO, here we take XXZ model as an example
     """
     def __init__(self,eps,MPO,N,D):
         """
@@ -87,7 +87,7 @@ class DMRG():
         :param M: the initial MPS
         :return: the right-canonical MPS B and the right operator
         """
-        # B=[self.right_canonical(m)[0] for m in M]  # possible not correct
+        # B=[self.right_canonical(m)[0] for m in M]
         right_cannonical=self.right_canonical
         B=[[] for i in range(len(M))]
         B[-1],U=right_cannonical(M[-1])
@@ -101,10 +101,10 @@ class DMRG():
         R[-1] = np.transpose(Ri, [0, 2, 4, 1, 3, 5])
         R[-1]=np.squeeze(R[-1])
         for i in range(1,len(M)):
-            Ri=np.tensordot(B[-(i+1)],self.MPO[-(i+1)],axes=(0,0))
-            Ri=np.tensordot(Ri,np.conj(B[-(i+1)]),axes=(2,0))
-            Ri = np.transpose(Ri, [0, 2, 4, 1, 3, 5])
-            R[-(i+1)] = np.tensordot(Ri, R[-i], axes=([3, 4, 5], [0, 1, 2]))
+            Ri = np.tensordot(B[-(i+1)],R[-i],axes=(2,0))
+            Ri = np.tensordot(self.MPO[-(i+1)], Ri,axes=([0,3],[0,2]))
+            Ri = np.tensordot(np.conj(B[-(i+1)]),Ri,axes=([0,2],[0,3]))
+            R[-(i+1)] = np.transpose(Ri,[2,1,0])
         return R,B
 
 
@@ -139,14 +139,12 @@ class DMRG():
             w,v=ssl.eigsh(H,which='SA',k=1,maxiter=5000)
             v = np.reshape(v, [d1, d2, d3])
             l, u = self.left_cannonical(v)
-            M[i]=l
-            Li=np.tensordot(l,self.MPO[i],axes=(0,0))
-            Li=np.tensordot(Li,np.conj(l),axes=(2,0))
-            Li=np.transpose(Li,[0,2,4,1,3,5])
-            L[i]=np.tensordot(L[i-1],Li,axes=([3,4,5],[0,1,2]))
+            M[i] = l
+            Li = np.tensordot(L[i-1],l,axes=(3,1))
+            Li = np.tensordot(Li, self.MPO[i],axes=([5,3],[0,2]))
+            L[i] = np.tensordot(Li, np.conj(l),axes=([3,5],[1,0]))
         M[-1]=np.tensordot(u,M[-1],axes=(1,1))
         return L,M
-
 
     def left_sweep(self,L,M):
         H = np.tensordot(L[-2], self.MPO[-1], axes=(4, 2))
@@ -173,10 +171,9 @@ class DMRG():
             v=np.reshape(v,[d0,d1,d2])
             v,u=self.right_canonical(v)
             M[-(i+1)] = v
-            Ri=np.tensordot(v,self.MPO[-(i+1)],axes=(0,0))
-            Ri=np.tensordot(Ri,np.conj(v),axes=(2,0))
-            Ri=np.transpose(Ri,[0,2,4,1,3,5])
-            R[-(i+1)]=np.tensordot(Ri,R[-i],axes=([3,4,5],[0,1,2]))
+            Ri = np.tensordot(np.conj(v),R[-i],axes=(2,2))
+            Ri = np.tensordot(self.MPO[-(i+1)],Ri,axes=([1,3],[0,3]))
+            R[-(i+1)] = np.tensordot(v, Ri,axes=([0,2],[0,3]))
         M[0]=np.tensordot(M[0],u,axes=(2,0))
         return R,M
 
@@ -212,6 +209,40 @@ class DMRG():
         norm=np.tensordot(M0,np.conj(M0),axes=([0,1,2],[0,1,2]))
         return norm
 
+    # Not tested yet
+    def correlation(self,M,operator,site_i,site_j):
+        """
+        Calculation for the correlation between site_i and site_j <|OiOj|>-<Oi><Oj>
+        :param operator: operator
+
+        """
+        minsite = min(site_i,site_j)
+        maxsite = max(site_i,site_j)
+        u = np.array([[1]])
+        for i in range(0,minsite):
+            M[i] = np.tensordot(u, M[i],axes=(-1,1)).transpose(1,0,2)
+            l,u = self.left_cannonical(M[i])
+            M[i] = l
+        M[minsite] = np.tensordot(u, M[minsite]).transpose(1,0,2)
+        MP = np.tensordot(M[minsite],operator,axes=(0,0))
+        MPI = np.tensordot(MP, np.conj(M[minsite]),axes=(-1,0))
+        MPI = MPI.transpose([0,2,1,3])
+        for i in range(minsite+1,maxsite):
+            MI = np.tensordot(MPI, M[i],axes=(2,1))
+            MPI = np.tensordot(MI, np.conj(M[i]), axes=([3,2],[0,1]))
+            # MI = np.tensordot(M[i], np.conj(M[i]), axes=(0,0)).transpose(0,2,1,3)
+            # MPI = np.tensordot(MPI, MI,axes=([2,3],[0,1]))
+
+        MP = np.tensordot(M[maxsite],operator,axes=(0,0))
+        MPJ = np.tensordot(MP, np.conj(M[maxsite]),axes=(-1,0))
+        MPJ = MPJ.transpose([0,2,1,3])
+
+        product = np.tensordot(MPI,MPJ, axes=([2,3,0,1]))
+        correlation = np.trace(product)
+
+        return correlation
+
+
 
     def magnetization(self,M):
         sz = np.array([[1, 0], [0, -1]])
@@ -225,22 +256,14 @@ class DMRG():
             mz[i]=site_expectation(M,sz,i)
             mx[i]=site_expectation(M,sx,i)
             my[i]=site_expectation(M,sy,i)
+        return np.mean(np.abs(mx)),np.mean(my),np.mean(np.abs(mz))
 
-        plt.figure("Magnetization Vs Site")
-        ax=plt.subplot(1,3,1)
-        ax.plot(mx)
-        ax.set_title("magnetization x")
 
-        ax = plt.subplot(1, 3, 2)
-        ax.plot(my)
-        ax.set_title("magnetization y")
 
-        ax = plt.subplot(1, 3, 3)
-        ax.plot(mz)
-        ax.set_title("magnetization z")
+    def meanmagnetization(self):
+        pass
 
-        plt.tight_layout()
-        plt.show()
+
 
     @functimer
     def dmrg(self):
@@ -262,10 +285,7 @@ class DMRG():
                 s = max(abs(m - m1).max(), s)
         return M,R
 
-
-if __name__=="__main__":
-    N = 100
-    h,J,Jz = 0,1,1
+def mpo(N,h,J,Jz):
     sz = np.array([[1,0],[0,-1]])/2
     sp = np.array([[0,1],[0,0]])
     sm = np.array([[0,0],[1,0]])
@@ -275,7 +295,7 @@ if __name__=="__main__":
     MPO[1][:,:,1,0] = sp
     MPO[1][:,:,2,0] = sm
     MPO[1][:,:,3,0] = sz
-    MPO[1][:,:,4,0] = -h*(sm+sp)
+    MPO[1][:,:,4,0] = -h*(sm+sp)/2
     MPO[1][:,:,4,1] = J/2*sm
     MPO[1][:,:,4,2] = J/2*sp
     MPO[1][:,:,4,3] = Jz*sz
@@ -284,14 +304,30 @@ if __name__=="__main__":
     MPO[N-1]=MPO[1][:,:,:,0].reshape(2,2,5,1)
     for i in range(2,N-1):
         MPO[i]=MPO[1]
+    return MPO
 
-    a=DMRG(10**(-7),MPO,N,20)
-    M,R=a.dmrg()
-    energy=a.energy(R[1],M[0])/N
-    mz=a.site_expecation_value(M,sz,5)
-    a.magnetization(M)
-    print(np.real(energy))
-    print(mz)
+
+
+if __name__=="__main__":
+    N = [10,20,30]
+    J,Jz = 0,-1
+    H = np.linspace(0,1,20)
+    mx = np.zeros(20)
+    my = np.zeros(20)
+    mz = np.zeros(20)
+    for n in N:
+        for (idx,h) in enumerate(H):
+            MPO = mpo(n,h,J,Jz)
+            a=DMRG(10**(-7),MPO,n,20)
+            M,R=a.dmrg()
+            energy=a.energy(R[1],M[0])/n
+            print(energy)
+            mx[idx], my[idx] ,mz[idx] = a.magnetization(M)
+
+        plt.figure("Magnetization")
+        plt.plot(H,mz)
+    plt.show()
+
 
 
 
